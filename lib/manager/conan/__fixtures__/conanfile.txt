@@ -11,6 +11,8 @@ catch2/[2.8]
 openssl/[~=3.0]@test/dev
 cmake/[>1.1 || 0.8] 
 cryptopp/[1.2.7 || >=1.2.9 <2.0.0]@test/dev
+#commentedout/1.2
+# commentedout/3.4
 
 [generators]
 xcode

@@ -53,7 +53,10 @@ export async function lookupConanPackage(
             `Found a conan package ${fromMatch.groups.name} ${fromMatch.groups.version} ${fromMatch.groups.userChannel}`
           );
           const version = fromMatch.groups.version;
-          const newDigest = fromMatch.groups.userChannel;
+          let newDigest = fromMatch.groups.userChannel;
+          if (newDigest === "@_/_") {
+            newDigest = " ";
+          }
           const result: Release = {
             version,
             newDigest,
@@ -91,35 +94,24 @@ export async function getDigest(
   }
 
   if (digests.length === 0) {
-    digests.push('@_/_');
+    return null;
   }
 
+  // favor existing digest
   if (digests.includes(currentDigest)) {
-    return '';
-  }
+    return currentDigest;
+  } 
 
-  return null;
+  return '';
 }
 
 export async function getReleases({
   lookupName,
   registryUrl,
 }: GetReleasesConfig): Promise<ReleaseResult | null> {
-  const fullDep: ReleaseResult = await lookupConanPackage(
+  const dependency: ReleaseResult = await lookupConanPackage(
     lookupName,
     registryUrl
   );
-  // filter out digests
-  if (fullDep) {
-    const dependency: ReleaseResult = { releases: [] };
-    for (const release of fullDep.releases) {
-      const version = release.version;
-      const result: Release = {
-        version,
-      };
-      dependency.releases.push(result);
-    }
-    return dependency;
-  }
-  return null;
+  return dependency;
 }

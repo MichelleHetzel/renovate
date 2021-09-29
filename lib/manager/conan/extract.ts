@@ -3,60 +3,75 @@ import { logger } from '../../logger';
 import * as loose from '../../versioning/loose';
 import type { PackageDependency, PackageFile } from '../types';
 
-export function getDep(
-  depName: string,
-  currentValue: string,
-  currentDigest: string
-): PackageDependency {
-  const dep: PackageDependency = {
-    depName,
-    currentValue,
-    currentDigest,
-  };
-
-  dep.datasource = datasourceConan.id;
-  dep.versioning = loose.id;
-
-  return dep;
-}
+const regex = new RegExp(/(?<name>[a-z\-_0-9]+)\/(?<version>[^@\n{*"']+)(?<userChannel>@\S+\/[^\n.{*"' ]+)?/gm);
 
 export default function extractPackageFile(
   content: string
 ): PackageFile | null {
-  const deps: PackageDependency[] = [];
 
-  const fromMatches = content.matchAll(
-    /(?<name>[a-z\-_0-9]+)\/(?<version>[^@\n"']+)(?<userChannel>@\S+\/[^\n"' ]+)?/gim
-  );
-
-  for (const fromMatch of fromMatches) {
-    if (fromMatch.groups.name) {
-      let userAndChannel = '@_/_';
-
-      if (fromMatch.groups.userChannel) {
-        userAndChannel = fromMatch.groups.userChannel;
-      }
-
-      // ignore packages with set ranges, conan will handle this on the project side
-      if (!fromMatch.groups.version.includes('[')) {
-        logger.trace(
-          `Found a conan package ${fromMatch.groups.name} ${fromMatch.groups.version} ${userAndChannel}`
-        );
-
-        const dep = getDep(
-          fromMatch.groups.name,
-          fromMatch.groups.version,
-          userAndChannel
-        );
-        logger.debug({
-          depName: dep.depName,
-          currentValue: dep.currentValue,
-          digest: dep.currentDigest,
-        });
-        deps.push(dep);
-      }
+  // conanfile.py
+  const sections = content.split('def ').map((section) => {
+    // only process sections where requirements are defined
+    if (section.includes('python_requires') ||
+        section.includes('build_require') ||
+        section.includes('require'))
+    {
+      return section;
     }
+    return null;
+  })
+  .filter(Boolean);
+
+  let deps = []
+  for (const section of sections) {
+    const dependencies = section
+      .split('\n')
+      .map((rawline) => {
+        let dep: PackageDependency = {};
+        const line = rawline.split('#')[0].split('//')[0];
+        if (line) {
+        
+          regex.lastIndex = 0;
+          const matches = regex.exec(line.trim());
+          if (matches) {
+            // logger.info(line.trim())
+            // logger.info(matches[0])
+            const depName = matches.groups.name;
+            const currentValue = matches.groups.version.trim();
+            let currentDigest = ' ';
+            if (matches.groups.userChannel) {
+              currentDigest = matches.groups.userChannel
+            }
+
+            logger.debug(
+              `Found a conan package ${depName} ${currentValue} ${currentDigest}`
+            );
+          
+            // ignore packages with set ranges, conan will handle this on the project side
+            if (!currentValue.includes('[')) {
+              dep = {
+                ...dep,
+                depName,
+                currentValue,
+                currentDigest,
+                datasource: datasourceConan.id,
+                versioning: loose.id,
+                replaceString: `${depName}/${currentValue}${currentDigest}`
+              };
+              return dep;
+            }
+          }
+        }
+
+        return null;
+
+      })
+      .filter(Boolean);
+
+    deps = deps.concat(dependencies)
   }
+
+  // logger.warn(deps)
 
   if (!deps.length) {
     return null;
